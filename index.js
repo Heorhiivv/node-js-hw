@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const mongoose = require("mongoose")
 const dotenv = require("dotenv")
 const contactRouter = require("./contact/contact.routes")
+const userRouter = require('./users/user.routes')
 
 dotenv.config()
 
@@ -30,7 +31,8 @@ function connectToMiddlewares(app) {
 }
 
 function declareRoutes(app) {
-  app.use("/contacts", contactRouter)
+  app.use('/contacts', contactRouter);
+  app.use('', userRouter);
 }
 
 async function connectToDb() {
