@@ -1,9 +1,16 @@
+const fs = require("fs")
+
 const jwt = require("jsonwebtoken")
 const bcrypt = require("bcryptjs")
 const Joi = require("joi")
 const dotenv = require("dotenv")
+const minifyImage = require("imagemin")
+const imageminJpegtran = require("imagemin-jpegtran")
+const imageminPngquant = require("imagemin-pngquant")
+const Avatar = require("avatar-builder")
 
 const User = require("./User")
+
 dotenv.config()
 
 async function registerUser(req, res) {
@@ -19,23 +26,43 @@ async function registerUser(req, res) {
     if (isEmailExist) {
       return res.status(409).send({message: "Email in use"})
     }
+    const avatarTitle = Date.now()
+    const avatar = Avatar.builder(Avatar.Image.margin(Avatar.Image.circleMask(Avatar.Image.identicon())), 128, 128, {
+      cache: Avatar.Cache.lru(),
+    })
+      .create(body)
+      .then((buffer) => fs.writeFileSync(`tmp/${avatarTitle}.png`, buffer))
+    // avatar.create("allaigre").then((buffer) => fs.writeFileSync("tmp/avatar-allaigre.png", buffer))
+
+    await minifyImage([`tmp/${avatarTitle}.png`], {
+      destination: "public/images",
+      plugins: [
+        imageminJpegtran(),
+        imageminPngquant({
+          quality: [0.6, 0.8],
+        }),
+      ],
+    })
 
     const user = await User.create({
       ...body,
+      avatarURL: `http://localhost:8080/images/${avatarTitle}.png`,
       password: hashedPassword,
     })
 
-    const {email, subscription} = user
+    const {email, subscription, avatarURL} = user
     res.status(201).json({
       user: {
         email: email,
         subscription: subscription,
+        avatarURL: avatarURL,
       },
     })
   } catch (error) {
     res.status(400).send(error)
   }
 }
+
 function validateUser(req, res, next) {
   const validationRules = Joi.object({
     email: Joi.string().required(),
@@ -136,6 +163,65 @@ async function getCurrentUser(req, res) {
   })
 }
 
+function validateSubscription(req, res, next) {
+  const validationRules = Joi.object({
+    subscription: Joi.string().valid("free", "pro", "premium").required(),
+  })
+  const validationResult = validationRules.validate(req.body)
+
+  if (validationResult.error) {
+    return res.status(400).send(validationResult.error.message)
+  }
+
+  next()
+}
+async function updateSubscription(req, res) {
+  try {
+    const {_id} = req.user
+    const {subscription} = req.body
+    const updateUser = await User.findByIdAndUpdate(
+      _id,
+      {subscription},
+      {
+        new: true,
+      }
+    )
+    if (!updateUser) {
+      return res.satus(400).send("Not found")
+    }
+    res.json({
+      email: updateUser.email,
+      subscription: updateUser.subscription,
+    })
+  } catch (error) {
+    res.status(400).send(error)
+  }
+}
+
+async function updateUserAvatar (req, res) {
+  try {
+    const { _id } = req.user;
+    const { filename } = req.file;
+const updateAvatar = await User.findByIdAndUpdate(
+  _id,
+  {
+    avatarURL: `http://localhost:8080/images/${filename}`
+  },
+  {
+    new: true,
+  },
+);
+
+if (!updateAvatar) res.status(401).send('Not authorized');
+res.json({
+  avatarURL: updateAvatar.avatarURL,
+})
+
+  } catch (error) {
+    res.status(400).send(error)
+  }
+}
+
 module.exports = {
   registerUser,
   validateUser,
@@ -143,4 +229,7 @@ module.exports = {
   authorize,
   logout,
   getCurrentUser,
+  validateSubscription,
+  updateSubscription,
+  updateUserAvatar
 }
