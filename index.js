@@ -6,12 +6,14 @@ const morgan = require('morgan');
 const mongoose = require("mongoose")
 const dotenv = require("dotenv")
 const multer = require('multer')
+const sgMail = require('@sendgrid/mail')
 
 const contactRouter = require("./contact/contact.routes")
 const userRouter = require('./users/user.routes')
 
 dotenv.config()
 
+sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 const PORT = process.env.PORT || 8080
 
 const storage = multer.diskStorage({

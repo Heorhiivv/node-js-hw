@@ -8,16 +8,21 @@ const minifyImage = require("imagemin")
 const imageminJpegtran = require("imagemin-jpegtran")
 const imageminPngquant = require("imagemin-pngquant")
 const Avatar = require("avatar-builder")
+const {v4: uuidv4} = require("uuid")
+const sgMail = require("@sendgrid/mail")
 
 const User = require("./User")
 
 dotenv.config()
 
-async function registerUser(req, res) {
+const PORT = process.env.PORT || 8080
+
+async function signUpUser(req, res) {
   try {
     const {body} = req
 
     const hashedPassword = await bcrypt.hash(body.password, 14)
+    const tokenToVerify = await uuidv4()
 
     const isEmailExist = await User.findOne({
       email: body.email,
@@ -48,19 +53,51 @@ async function registerUser(req, res) {
       ...body,
       avatarURL: `http://localhost:8080/images/${avatarTitle}.png`,
       password: hashedPassword,
+      verificationToken: tokenToVerify,
     })
 
-    const {email, subscription, avatarURL} = user
+    const {email, subscription, avatarURL, verificationToken} = user
+
+    await sendVerificationEmail(email, tokenToVerify)
+
     res.status(201).json({
       user: {
         email: email,
         subscription: subscription,
         avatarURL: avatarURL,
+        verificationToken: verificationToken,
       },
     })
   } catch (error) {
     res.status(400).send(error)
   }
+}
+
+async function sendVerificationEmail(email, verificationToken) {
+  const msg = {
+    to: email, // Change to your recipient
+    from: "polsta.mama@gmail.com", // Change to your verified sender
+    subject: "Sending with SendGrid is Fun",
+    html: `Thank you for registration. To verify your email, click 
+    <a href="http://localhost:${PORT}/auth/verify/${verificationToken}">here</a>`,
+  }
+  await sgMail.send(msg)
+}
+
+async function verifyUser(req, res) {
+  const {
+    params: {verificationToken},
+  } = req
+  const verificationTokenRequest = await User.findOne({
+    verificationToken,
+  })
+
+  if (!verificationTokenRequest) {
+    return res.status(404).send("User not found")
+  }
+
+  await User.updateOne({_id: verificationTokenRequest._id}, {$unset: {verificationToken: ""}})
+  res.status(200).send("Ok")
 }
 
 function validateUser(req, res, next) {
@@ -198,32 +235,31 @@ async function updateSubscription(req, res) {
   }
 }
 
-async function updateUserAvatar (req, res) {
+async function updateUserAvatar(req, res) {
   try {
-    const { _id } = req.user;
-    const { filename } = req.file;
-const updateAvatar = await User.findByIdAndUpdate(
-  _id,
-  {
-    avatarURL: `http://localhost:8080/images/${filename}`
-  },
-  {
-    new: true,
-  },
-);
+    const {_id} = req.user
+    const {filename} = req.file
+    const updateAvatar = await User.findByIdAndUpdate(
+      _id,
+      {
+        avatarURL: `http://localhost:${PORT}/images/${filename}`,
+      },
+      {
+        new: true,
+      }
+    )
 
-if (!updateAvatar) res.status(401).send('Not authorized');
-res.json({
-  avatarURL: updateAvatar.avatarURL,
-})
-
+    if (!updateAvatar) res.status(401).send("Not authorized")
+    res.json({
+      avatarURL: updateAvatar.avatarURL,
+    })
   } catch (error) {
     res.status(400).send(error)
   }
 }
 
 module.exports = {
-  registerUser,
+  signUpUser,
   validateUser,
   login,
   authorize,
@@ -231,5 +267,6 @@ module.exports = {
   getCurrentUser,
   validateSubscription,
   updateSubscription,
-  updateUserAvatar
+  updateUserAvatar,
+  verifyUser,
 }
