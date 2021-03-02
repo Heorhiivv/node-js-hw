@@ -37,7 +37,7 @@ async function minifyImage(req, res, next) {
   next()
 }
 
-router.post("/auth/register", UserController.validateUser, UserController.registerUser)
+router.post("/auth/register", UserController.validateUser, UserController.signUpUser)
 router.post("/auth/login", UserController.validateUser, UserController.login)
 router.post("/auth/logout", UserController.authorize, UserController.logout)
 
@@ -46,5 +46,7 @@ router.get("/users/current", UserController.authorize, UserController.getCurrent
 router.patch('/users/current', UserController.authorize, UserController.validateSubscription, UserController.updateSubscription)
 
 router.patch('/users/avatars', UserController.authorize, upload.single('avatar'), minifyImage, UserController.updateUserAvatar,)
+
+router.get('/auth/verify/:verificationToken', UserController.verifyUser)
 
 module.exports = router
